@@ -6,6 +6,7 @@ Camera-assisted XY tool alignment for [Bondtech INDX](https://github.com/Bondtec
 
 - [Hardware](#hardware)
 - [Installation](#installation)
+- [Single HTML File](#single-html-file)
 - [Local Camera](#local-camera)
 - [Remote Access (Hostname/Moonraker)](#remote-access-hostnamemoonraker)
 - [Usage Guide](#usage-guide)
@@ -45,6 +46,20 @@ This script creates a Python virtual environment, sets up the `axiscope` systemd
 3. Use the Start/Stop button
 
 <img style="padding-bottom: 10px;" src="media/ServiceControl.png" alt="Service control" width="250"/><br/>
+
+## Single HTML File
+
+Instead of the service, you can build one HTML file and let the printer's web server host it next to Mainsail:
+
+```bash
+python3 build.py
+scp dist/axiscope.html pi@<your-printer>:~/mainsail/
+```
+
+Then open `http://<your-printer>/axiscope.html`. The page talks to Moonraker through Mainsail's web server, so no CORS change is needed. jQuery and Bootstrap still load from their CDNs, so the browser needs internet access.
+
+- A Mainsail update can replace the `~/mainsail` folder. Copy the file again after updating.
+- Over plain `http` the browser blocks local cameras, so only printer cameras work. See [Local Camera](#local-camera).
 
 ## Local Camera
 
