@@ -17,6 +17,7 @@ Camera-assisted XY (and optional Z) tool alignment for multi-tool 3D printers ru
   - [LED Control](#led-control-ember-prototype-v2-camera)
   - [G-code Macro Options](#g-code-macro-options)
   - [Remote Access (Hostname/Moonraker)](#remote-access-hostnamemoonraker)
+  - [Local Camera](#local-camera)
 - [Usage Guide](#usage-guide)
 - [Troubleshooting & FAQ](#troubleshooting--faq)
 - [Credits](#credits)
@@ -216,6 +217,20 @@ cors_domains:
     *://my.mainsail.xyz
     *://app.fluidd.xyz
 ```
+
+### Local Camera
+
+The camera can also be plugged into the computer that runs the browser. After you connect to the printer, the camera list shows the printer cameras and the local cameras (marked with `Local:`). The browser asks once for camera access.
+
+Browsers only allow camera access on `https` or `localhost`. When you open `http://<your-printer-ip>:3000`, local cameras are not listed. Run Axiscope on your computer instead and enter the printer IP in the dialog:
+
+```bash
+git clone https://github.com/nic335/Axiscope.git
+cd Axiscope
+python -m http.server 3000
+```
+
+Then open `http://localhost:3000`. Moonraker must allow this origin, see `*://localhost:*` in [Remote Access](#remote-access-hostnamemoonraker).
 
 ## Usage Guide
 
