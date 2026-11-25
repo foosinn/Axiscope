@@ -102,7 +102,7 @@ The tool count comes from `tool_count` in `[gcode_macro TOOL_POSITIONS]`. You ca
 Axiscope finds the nozzle hole in the camera image and can move the head until the hole sits in the crosshair. The detected hole is drawn green, the nozzle face yellow.
 
 1. With a tool over the camera and the hole detected, press **Calibrate camera** once. It moves 0.5 mm in X and Y to learn the scale and rotation of the camera. Redo it when the camera, its position or its resolution changes.
-2. Press **Auto center**. It moves in small steps until the hole is less than 0.005 mm off. Each move ends from the same side, so backlash is the same every time. **Stop** ends it before the next move.
+2. Press **Auto center**. It moves in small steps until the hole is less than 0.005 mm off. Each move ends from the same side, so backlash is the same every time. **Stop** ends it before the next move. If a move does not bring the hole closer, for example because the camera was rotated after calibration, it stops and asks you to calibrate again.
 3. Save the position in the guide as usual.
 
 The hole is found by its round outline, not its color, so empty, dark and white filled holes all work. It must sit inside the nozzle face and most of its outline must be visible. If not, Axiscope reports no hole and does not move. Tips:

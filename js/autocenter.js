@@ -10,6 +10,7 @@ const AC_DONE_MM = 0.005;
 const AC_MAX_STEP = 1;         // mm per move
 const AC_MAX_TRAVEL = 3;       // mm per auto center run
 const AC_MAX_ITER = 8;
+const AC_CHECK_MIN = 0.02;     // mm, smaller moves are not checked for direction
 const AC_STORAGE_KEY = 'axiscope_cam_calib';
 
 let acShowDetection = true;
@@ -418,6 +419,7 @@ async function autoCenter() {
   const inv = [[J[1][1] / det, -J[0][1] / det], [-J[1][0] / det, J[0][0] / det]];
 
   let travel = 0;
+  let last = null;
   for (let i = 1; i <= AC_MAX_ITER; i++) {
     if (acStop) throw new Error('Stopped');
     const p = await detectStable();
@@ -428,13 +430,20 @@ async function autoCenter() {
     let dy = inv[1][0] * ex + inv[1][1] * ey;
     const dist = Math.hypot(dx, dy);
     if (dist < AC_DONE_MM) return `Centered · ${dist.toFixed(4)} mm off`;
+    // A move must cut the error by at least half its length. If not, the
+    // calibration no longer matches the camera, e.g. it was rotated.
+    if (last && last.step > AC_CHECK_MIN && last.dist - dist < last.step / 2) {
+      throw new Error('The hole moved the wrong way. Did the camera move? Calibrate the camera again.');
+    }
     setAcStatus(`Move ${i} · ${dist.toFixed(3)} mm off`);
     if (dist > AC_MAX_STEP) {
       dx *= AC_MAX_STEP / dist;
       dy *= AC_MAX_STEP / dist;
     }
-    travel += Math.hypot(dx, dy);
+    const step = Math.hypot(dx, dy);
+    travel += step;
     if (travel > AC_MAX_TRAVEL) throw new Error('Moved too far, stopped');
+    last = { dist: dist, step: step };
     if (acStop) throw new Error('Stopped');
     await moveXY(dx, dy);
   }
