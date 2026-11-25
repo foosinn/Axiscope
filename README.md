@@ -2,7 +2,7 @@
 
 Camera-assisted XY tool alignment for [Bondtech INDX](https://github.com/BondtechAB/INDX) printers. Center each nozzle in the crosshair and INDX saves the offset. This is the [nozzle camera method](https://github.com/BondtechAB/INDX#method-3-nozzle-camera-most-precise-xy-higher-cost) from the INDX docs, as a guided web page.
 
-<img src="media/axiscope.png" alt="Axiscope with the INDX guide finished and auto center done" width="700"/>
+<img src="media/axiscope.png" alt="Axiscope centering T2 on the nozzle hole during the INDX guide" width="700"/>
 
 ## Table of Contents
 
