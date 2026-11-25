@@ -5,10 +5,10 @@ Camera-assisted XY tool alignment for [Bondtech INDX](https://github.com/Bondtec
 ## Table of Contents
 
 - [Hardware](#hardware)
-- [Installation](#installation)
-- [Single HTML File](#single-html-file)
-- [Local Camera](#local-camera)
-- [Remote Access (Hostname/Moonraker)](#remote-access-hostnamemoonraker)
+- [Running Axiscope](#running-axiscope)
+  - [On your computer](#on-your-computer)
+  - [On the printer](#on-the-printer)
+- [Moonraker CORS](#moonraker-cors)
 - [Usage Guide](#usage-guide)
 - [Troubleshooting & FAQ](#troubleshooting--faq)
 - [Credits](#credits)
@@ -23,49 +23,13 @@ Camera-assisted XY tool alignment for [Bondtech INDX](https://github.com/Bondtec
 
 The camera can be connected to the printer (Crowsnest) or to the computer that runs the browser.
 
-## Installation
+## Running Axiscope
 
-**Prerequisites:**
+**Prerequisites:** Klipper with the [INDX macros](https://github.com/BondtechAB/INDX) (docks calibrated) and Moonraker.
 
-- Klipper with the [INDX macros](https://github.com/BondtechAB/INDX), docks calibrated
-- Moonraker
-- SSH access to your printer
+Axiscope is a static web page. There is nothing to install on the printer.
 
-**Install on the printer:**
-
-```bash
-curl -sSL https://raw.githubusercontent.com/nic335/Axiscope/refs/heads/main/install.sh | bash
-```
-
-This script creates a Python virtual environment, sets up the `axiscope` systemd service and adds it to Moonraker.
-
-**Start the service:**
-
-1. Open Mainsail
-2. Go to **Klipper → Service → Host Control** and find `axiscope`
-3. Use the Start/Stop button
-
-<img style="padding-bottom: 10px;" src="media/ServiceControl.png" alt="Service control" width="250"/><br/>
-
-## Single HTML File
-
-Instead of the service, you can build one HTML file and let the printer's web server host it next to Mainsail:
-
-```bash
-python3 build.py
-scp dist/axiscope.html pi@<your-printer>:~/mainsail/
-```
-
-Then open `http://<your-printer>/axiscope.html`. The page talks to Moonraker through Mainsail's web server, so no CORS change is needed. jQuery and Bootstrap still load from their CDNs, so the browser needs internet access.
-
-- A Mainsail update can replace the `~/mainsail` folder. Copy the file again after updating.
-- Over plain `http` the browser blocks local cameras, so only printer cameras work. See [Local Camera](#local-camera).
-
-## Local Camera
-
-After you connect to the printer, the camera list shows the printer cameras and the local cameras (marked with `Local:`). The browser asks once for camera access.
-
-Browsers only allow camera access on `https` or `localhost`. When you open `http://<your-printer-ip>:3000`, local cameras are not listed. Run Axiscope on your computer instead and enter the printer IP in the dialog:
+### On your computer
 
 ```bash
 git clone https://github.com/nic335/Axiscope.git
@@ -73,11 +37,29 @@ cd Axiscope
 python -m http.server 3000
 ```
 
-Then open `http://localhost:3000`. Moonraker must allow this origin, see `*://localhost:*` below.
+Open `http://localhost:3000` and enter the printer address in the dialog.
 
-## Remote Access (Hostname/Moonraker)
+This is the only way to use a camera plugged into your computer: browsers only allow camera access on `https` or `localhost`. Printer cameras work too. Moonraker must allow the `localhost` origin, see [Moonraker CORS](#moonraker-cors).
 
-If you connect using a hostname (e.g. `voron.local:3000`) or from `localhost`, add the origins to `moonraker.conf`:
+### On the printer
+
+Build one HTML file and let the printer's web server host it next to Mainsail:
+
+```bash
+python3 build.py
+scp dist/axiscope.html pi@<your-printer>:~/mainsail/
+```
+
+Open `http://<your-printer>/axiscope.html`. The page talks to Moonraker through Mainsail's web server, so no CORS change is needed.
+
+- Over plain `http` the browser blocks local cameras, so only printer cameras work.
+- A Mainsail update can replace the `~/mainsail` folder. Copy the file again after updating.
+
+jQuery and Bootstrap load from their CDNs, so the browser needs internet access in both cases.
+
+## Moonraker CORS
+
+When the page is not served by the printer itself (e.g. from `localhost`), Moonraker must allow its origin in `moonraker.conf`:
 
 ```ini
 [authorization]
@@ -101,7 +83,7 @@ cors_domains:
 
 ## Usage Guide
 
-1. Open `http://<your-printer-ip>:3000` (or `http://localhost:3000` for a local camera)
+1. Open Axiscope, see [Running Axiscope](#running-axiscope)
 2. Enter the printer address and connect. Axiscope checks for the INDX calibration macros.
 3. Select the camera
 
@@ -123,7 +105,7 @@ For a printer camera, make sure it is configured in both Crowsnest and Mainsail:
 - [Configuring a camera in Crowsnest](https://mellow.klipper.cn/en/docs/DebugDoc/BasicTutorial/camera/)
 - [Configuring the camera in Mainsail](https://docs.mainsail.xyz/settings/webcams)
 
-For a local camera, see [Local Camera](#local-camera).
+For a local camera, run Axiscope [on your computer](#on-your-computer).
 
 ### Camera only loads if plugged in before boot
 
