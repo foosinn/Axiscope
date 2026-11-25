@@ -191,11 +191,6 @@ sudo systemctl enable axiscope.service
 echo "Restarting moonraker to recognize the new service..."
 sudo systemctl restart moonraker
 
-# Add symlink of axiscope into klipper/klippy/extras and restart klipper
-echo "Adding symlink of axiscope into klipper/klippy/extras... and restarting klipper"
-sudo ln -s ${HOME}/axiscope/klippy/extras/axiscope.py ${HOME}/klipper/klippy/extras/axiscope.py
-sudo systemctl restart klipper
-
 echo "Installation complete!"
 echo "AxisScope service has been enabled"
 echo "The service can be controlled through Mainsail's service control popup"

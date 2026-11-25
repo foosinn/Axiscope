@@ -53,15 +53,8 @@ if [ -f "${MOONRAKER_CONF}" ]; then
     sed -i '/\[update_manager axiscope\]/,/\[\|^$/!{/\[update_manager axiscope\]/,/^$/d}' "${MOONRAKER_CONF}"
 fi
 
-# Remove symlink from klipper extras
-echo "Removing symlink from klipper extras..."
-if [ -L "${HOME}/klipper/klippy/extras/axiscope.py" ]; then
-    sudo rm -f "${HOME}/klipper/klippy/extras/axiscope.py"
-fi
-
-# Restart services
-echo "Restarting services..."
+# Restart moonraker
+echo "Restarting moonraker..."
 sudo systemctl restart moonraker
-sudo systemctl restart klipper
 
 echo "AxisScope has been uninstalled successfully!"

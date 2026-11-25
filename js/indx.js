@@ -21,13 +21,7 @@ function startIndxGuide() {
   indxBusy = null;
   indxError = '';
   indxStatus = null;
-  $('#tool-list').hide();
-  $('#indx-guide').show().html('<div class="text-secondary p-3">Loading INDX state...</div>');
-}
-
-function stopIndxGuide() {
-  $('#indx-guide').hide().empty();
-  $('#tool-list').show();
+  $('#indx-guide').html('<div class="text-secondary p-3">Loading INDX state...</div>');
 }
 
 function updateIndxGuide(status) {
@@ -40,7 +34,7 @@ async function indxRun(label, script, nextStep) {
   indxError = '';
   renderIndxGuide();
   try {
-    await $.get(printerUrl(printerIp, '/printer/gcode/script?script=' + encodeURIComponent(script)));
+    await $.get(gcodeUrl(script));
     if (nextStep !== undefined) indxStep = nextStep;
   } catch (xhr) {
     indxError = (xhr.responseJSON && xhr.responseJSON.error && xhr.responseJSON.error.message) ||
