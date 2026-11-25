@@ -27,6 +27,7 @@
     <script src="./js/index.js"></script>
     <script src="./js/gcode.js"></script>
     <script src="./js/indx.js"></script>
+    <script src="./js/autocenter.js"></script>
 
     <link rel="stylesheet" href="./css/camera.css">
 
@@ -136,6 +137,7 @@
                         <div id="camContainer" class="img-overlay-wrap">
                         <img id="zoom-image" class="cam-feed" src="" width="800"/>
                         <video id="zoom-video" class="cam-feed" autoplay muted playsinline style="display:none;"></video>
+                        <canvas id="detect-overlay" class="cam-overlay"></canvas>
                         <svg viewBox="0 0 200 200">
                             <circle cx="100" cy="75" r="50" stroke="red" stroke-width="0.25" fill="none"/>
                             <line x1="100" y1="15" x2="100" y2="135" stroke="red" stroke-width="0.25" />
@@ -163,6 +165,16 @@
                         </div>
                         <div class="col-1">
                             <i class="bi bi-brightness-high"></i>
+                        </div>
+                        </div>
+
+                        <div class="row p-2 g-2 align-items-center">
+                        <div class="col-12 d-flex justify-content-between small">
+                            <div class="form-check form-switch text-start">
+                                <input class="form-check-input" type="checkbox" id="ac-show" checked>
+                                <label class="form-check-label" for="ac-show">Show detection</label>
+                            </div>
+                            <span id="ac-live" class="text-secondary"></span>
                         </div>
                         </div>
 

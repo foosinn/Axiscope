@@ -25,7 +25,8 @@
     overflow: hidden;
 }
 
-.img-overlay-wrap .cam-feed {
+.img-overlay-wrap .cam-feed,
+.img-overlay-wrap .cam-overlay {
     position: absolute;
     top: 0;
     left: 0;
@@ -34,6 +35,10 @@
     object-fit: cover;
     transition: transform 0.1s ease, filter 0.1s ease;
     will-change: transform;
+}
+
+.img-overlay-wrap .cam-overlay {
+    pointer-events: none;
 }
 
 .img-overlay-wrap svg {

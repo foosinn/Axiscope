@@ -31,7 +31,7 @@ function updateTransform() {
     // Get zoom origin based on crosshair position
     const origin = calculateZoomOrigin();
     
-    document.querySelectorAll('.cam-feed').forEach(feed => {
+    document.querySelectorAll('.cam-feed, .cam-overlay').forEach(feed => {
         feed.style.transformOrigin = `${origin.x}% ${origin.y}%`;
         feed.style.transform = `scale(${scaleX}, ${scaleY})`;
     });
