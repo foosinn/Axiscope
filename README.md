@@ -34,6 +34,14 @@ Axiscope is a static web page. There is nothing to install on the printer.
 
 ### On your computer
 
+Without cloning, one command fetches Axiscope from GitHub and opens it on `http://localhost:3000`:
+
+```bash
+python3 -c "import urllib.request as u; exec(u.urlopen('https://raw.githubusercontent.com/foosinn/Axiscope/main/serve.py').read())"
+```
+
+It runs [`serve.py`](serve.py), a small server that fetches each file from this repo. If port 3000 is taken, it uses a free port and prints it. Or clone and serve the files yourself:
+
 ```bash
 git clone https://github.com/nic335/Axiscope.git
 cd Axiscope
