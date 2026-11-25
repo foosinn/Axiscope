@@ -19,6 +19,7 @@ Camera-assisted XY (and optional Z) tool alignment for multi-tool 3D printers ru
   - [Remote Access (Hostname/Moonraker)](#remote-access-hostnamemoonraker)
   - [Local Camera](#local-camera)
 - [Usage Guide](#usage-guide)
+  - [Bondtech INDX](#bondtech-indx)
 - [Troubleshooting & FAQ](#troubleshooting--faq)
 - [Credits](#credits)
 - [License](#license)
@@ -243,6 +244,17 @@ Then open `http://localhost:3000`. Moonraker must allow this origin, see `*://lo
 <img style="padding-bottom: 10px;" src="media/T0-Aligment.gif" alt="T0 alignment" width="500"/><br/>
 <img style="padding-bottom: 10px;" src="media/CapturePosChangeT1.gif" alt="Capture and switch tool" width="500"/><br/>
 <img style="padding-bottom: 10px;" src="media/GrabOffset.gif" alt="Grab offset" width="500"/><br/>
+
+### Bondtech INDX
+
+Axiscope detects an [INDX](https://github.com/BondtechAB/INDX) printer by its calibration macros. It then shows a step-by-step guide instead of the tool list. The guide uses the INDX camera macros, so the `[axiscope]` section and Klipper Tool Changer are not needed.
+
+1. **Prepare:** home the printer. The docks must be calibrated.
+2. **T0:** pick up T0, center it in the crosshair, save it as camera reference (`CAL_ONE_SET_CAMERA_REF`).
+3. **T1 to Tn:** for each tool, pick it up and move it to the camera (`CAL_TWO_PREP_TOOL_CAL TOOL=n`), center it, save the offset (`CAL_THREE_SAVE_XY_OFFSET`). The guide shows the live offset while you jog.
+4. **Done:** check all offsets, then run `CAL_Z` for the Z offsets.
+
+The tool count comes from `tool_count` in `[gcode_macro TOOL_POSITIONS]`. INDX stores the offsets in `save_variables` and applies them on the next tool pickup. You can click any step to redo it.
 
 ## Troubleshooting & FAQ
 
