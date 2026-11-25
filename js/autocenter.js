@@ -1,7 +1,7 @@
-// Finds the dark nozzle hole in the camera image and moves the toolhead
-// until the hole sits under the crosshair.
+// Finds the nozzle hole in the camera image and moves the toolhead until
+// the hole sits under the crosshair.
 
-const AC_ROI = 0.6;            // ROI side, as part of the shorter frame side
+const AC_ROI = 0.8;            // ROI side, as part of the shorter frame side
 const AC_LIVE_MS = 200;
 const AC_SETTLE_MS = 300;      // camera latency after a move
 const AC_APPROACH = 0.3;       // mm, every move ends from the -X/-Y side
@@ -65,39 +65,22 @@ function crosshairTarget(fw, fh) {
   };
 }
 
-function percentile(hist, count) {
-  let sum = 0;
-  for (let v = 0; v < 256; v++) {
-    sum += hist[v];
-    if (sum >= count) return v;
-  }
-  return 255;
-}
-
-function otsu(values) {
-  const hist = new Float64Array(256);
-  values.forEach(v => hist[v | 0]++);
-  const total = values.length;
-  let sumAll = 0;
-  for (let v = 0; v < 256; v++) sumAll += v * hist[v];
-  let sumB = 0, weightB = 0, best = 0, threshold = 128;
-  for (let v = 0; v < 256; v++) {
-    weightB += hist[v];
-    if (!weightB) continue;
-    const weightF = total - weightB;
-    if (!weightF) break;
-    sumB += v * hist[v];
-    const diff = sumB / weightB - (sumAll - sumB) / weightF;
-    const between = weightB * weightF * diff * diff;
-    if (between > best) {
-      best = between;
-      threshold = v;
+function grayRoi(imageData, target) {
+  const { width: W, height: H, data } = imageData;
+  const size = Math.round(Math.min(W, H) * AC_ROI);
+  const x0 = clamp(Math.round(target.x - size / 2), 0, W - size);
+  const y0 = clamp(Math.round(target.y - size / 2), 0, H - size);
+  const gray = new Float32Array(size * size);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const i = ((y0 + y) * W + x0 + x) * 4;
+      gray[y * size + x] = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
     }
   }
-  return threshold + 0.5;
+  return { gray: gray, size: size, x0: x0, y0: y0 };
 }
 
-function boxBlur3(src, size) {
+function blur3(src, size) {
   const out = new Float32Array(src.length);
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
@@ -118,97 +101,173 @@ function boxBlur3(src, size) {
   return out;
 }
 
-function ringMean(img, size, cx, cy, r1, r2) {
-  let sum = 0, count = 0;
-  const x0 = Math.max(0, Math.floor(cx - r2)), x1 = Math.min(size - 1, Math.ceil(cx + r2));
-  const y0 = Math.max(0, Math.floor(cy - r2)), y1 = Math.min(size - 1, Math.ceil(cy + r2));
-  for (let y = y0; y <= y1; y++) {
-    for (let x = x0; x <= x1; x++) {
-      const d = Math.hypot(x + 0.5 - cx, y + 0.5 - cy);
-      if (d >= r1 && d <= r2) {
-        sum += img[y * size + x];
-        count++;
-      }
+// Thin edge points with their gradient direction. The threshold is a
+// percentile of the gradient strength, so it adapts to the brightness.
+function edgePoints(img, size) {
+  const n = size * size;
+  const gx = new Float32Array(n), gy = new Float32Array(n), mag = new Float32Array(n);
+  let max = 0;
+  for (let y = 1; y < size - 1; y++) {
+    for (let x = 1; x < size - 1; x++) {
+      const i = y * size + x;
+      const a = img[i - size - 1], b = img[i - size], c = img[i - size + 1];
+      const d = img[i - 1], f = img[i + 1];
+      const g = img[i + size - 1], h = img[i + size], k = img[i + size + 1];
+      gx[i] = (c + 2 * f + k) - (a + 2 * d + g);
+      gy[i] = (g + 2 * h + k) - (a + 2 * b + c);
+      mag[i] = Math.hypot(gx[i], gy[i]);
+      if (mag[i] > max) max = mag[i];
     }
   }
-  return count ? sum / count : 0;
+  if (max < 20) return [];
+
+  const hist = new Uint32Array(1024);
+  for (let i = 0; i < n; i++) hist[Math.min(1023, Math.floor(mag[i] / max * 1023))]++;
+  let count = 0, bin = 0, median = 0;
+  while (bin < 1023 && count < n * 0.85) {
+    count += hist[bin++];
+    if (!median && count >= n * 0.5) median = bin / 1023 * max;
+  }
+  const threshold = bin / 1023 * max;
+
+  const edges = [];
+  for (let y = 2; y < size - 2; y++) {
+    for (let x = 2; x < size - 2; x++) {
+      const i = y * size + x, m = mag[i];
+      if (m < threshold) continue;
+      const ux = gx[i] / m, uy = gy[i] / m;
+      if (m < mag[Math.round(y + uy) * size + Math.round(x + ux)]) continue;
+      if (m < mag[Math.round(y - uy) * size + Math.round(x - ux)]) continue;
+      edges.push({ x: x + 0.5, y: y + 0.5, ux: ux, uy: uy, m: m });
+    }
+  }
+  edges.median = median;
+  return edges;
 }
 
-// Returns the hole center {x, y, r} in frame pixels, or null.
-function detectHole(imageData, target) {
-  const { width: W, height: H, data } = imageData;
-  const size = Math.round(Math.min(W, H) * AC_ROI);
-  const x0 = clamp(Math.round(target.x - size / 2), 0, W - size);
-  const y0 = clamp(Math.round(target.y - size / 2), 0, H - size);
-  const n = size * size;
-
-  const gray = new Float32Array(n);
-  const hist = new Uint32Array(256);
-  for (let y = 0; y < size; y++) {
-    for (let x = 0; x < size; x++) {
-      const i = ((y0 + y) * W + x0 + x) * 4;
-      const v = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-      gray[y * size + x] = v;
-      hist[v | 0]++;
-    }
-  }
-
-  // Brightness normalization: stretch the 2nd..98th percentile to 0..255.
-  const lo = percentile(hist, n * 0.02);
-  const hi = percentile(hist, n * 0.98);
-  if (hi - lo < 10) return null;
-  for (let i = 0; i < n; i++) gray[i] = clamp((gray[i] - lo) * 255 / (hi - lo), 0, 255);
-
-  const img = boxBlur3(gray, size);
-  const t = otsu(img);
-
-  const seen = new Uint8Array(n);
-  const stack = new Int32Array(n);
-  const tx = target.x - x0, ty = target.y - y0;
-  let best = null;
-
-  for (let start = 0; start < n; start++) {
-    if (seen[start] || img[start] >= t) continue;
-
-    let top = 0, area = 0, border = false, sumW = 0, sumX = 0, sumY = 0, sumV = 0;
-    let minX = size, maxX = 0, minY = size, maxY = 0;
-    stack[top++] = start;
-    seen[start] = 1;
-    while (top) {
-      const i = stack[--top];
-      const x = i % size, y = (i - x) / size;
-      const w = t - img[i];
-      area++;
-      sumW += w; sumX += w * (x + 0.5); sumY += w * (y + 0.5); sumV += img[i];
-      if (x < minX) minX = x;
-      if (x > maxX) maxX = x;
-      if (y < minY) minY = y;
-      if (y > maxY) maxY = y;
-      if (x === 0 || y === 0 || x === size - 1 || y === size - 1) border = true;
-      const next = [x > 0 ? i - 1 : -1, x < size - 1 ? i + 1 : -1, y > 0 ? i - size : -1, y < size - 1 ? i + size : -1];
-      for (const j of next) {
-        if (j >= 0 && !seen[j] && img[j] < t) {
-          seen[j] = 1;
-          stack[top++] = j;
-        }
+// Every edge point votes for centers along its gradient line, in both
+// directions, so dark and bright holes count the same. Face and hole are
+// concentric and vote for the same spot.
+function voteCenter(edges, size, rMin, rMax) {
+  const acc = new Float32Array(size * size);
+  for (const e of edges) {
+    for (const dir of [1, -1]) {
+      for (let r = rMin; r <= rMax; r++) {
+        const cx = Math.floor(e.x + dir * e.ux * r);
+        const cy = Math.floor(e.y + dir * e.uy * r);
+        if (cx < 0 || cy < 0 || cx >= size || cy >= size) break;
+        acc[cy * size + cx]++;
       }
     }
-
-    if (border || area < 15 || area > n * 0.15) continue;
-    const bw = maxX - minX + 1, bh = maxY - minY + 1;
-    const aspect = bw / bh;
-    const fill = area / (Math.PI * bw / 2 * bh / 2);
-    if (aspect < 0.6 || aspect > 1.6 || fill < 0.7 || fill > 1.25) continue;
-
-    const cx = sumX / sumW, cy = sumY / sumW;
-    const r = Math.sqrt(area / Math.PI);
-    if (ringMean(img, size, cx, cy, r * 1.3, r * 2) - sumV / area < 60) continue;
-
-    const score = 1 - Math.abs(fill - 1) - Math.abs(aspect - 1) / 2 - Math.hypot(cx - tx, cy - ty) / size;
-    if (!best || score > best.score) best = { score: score, x: cx + x0, y: cy + y0, r: r };
   }
+  let best = 0, bestI = -1;
+  for (let y = 2; y < size - 2; y++) {
+    for (let x = 2; x < size - 2; x++) {
+      let sum = 0;
+      for (let dy = -2; dy <= 2; dy++) {
+        for (let dx = -2; dx <= 2; dx++) sum += acc[(y + dy) * size + x + dx];
+      }
+      if (sum > best) {
+        best = sum;
+        bestI = y * size + x;
+      }
+    }
+  }
+  return bestI < 0 ? null : { x: bestI % size + 0.5, y: Math.floor(bestI / size) + 0.5 };
+}
 
-  return best && { x: best.x, y: best.y, r: best.r };
+// Radii around the center where many edges point at the center.
+function radiusPeaks(edges, center, rMin, rMax) {
+  const hist = new Float32Array(rMax + 2);
+  for (const e of edges) {
+    const dx = e.x - center.x, dy = e.y - center.y, d = Math.hypot(dx, dy);
+    if (d < rMin || d > rMax) continue;
+    if (Math.abs((dx * e.ux + dy * e.uy) / d) > 0.9) hist[Math.round(d)] += 1 / d;
+  }
+  const peaks = [];
+  for (let r = rMin + 1; r < rMax; r++) {
+    if (hist[r] > 0 && hist[r] >= hist[r - 1] && hist[r] >= hist[r + 1]) {
+      peaks.push({ r: r, score: hist[r - 1] + hist[r] + hist[r + 1] });
+    }
+  }
+  return peaks.sort((a, b) => b.score - a.score).slice(0, 8).map(p => p.r);
+}
+
+function solve3(M, v) {
+  const det = m => m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1])
+                 - m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0])
+                 + m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  const D = det(M);
+  if (!D) return null;
+  return [0, 1, 2].map(k => det(M.map((row, i) => row.map((val, j) => j === k ? v[i] : val))) / D);
+}
+
+// Least-squares circle fit on the edge points near a guess. Points that do
+// not fit (smears, specks) drop out as the tolerance shrinks.
+function fitCircle(edges, center, r0) {
+  let c = { x: center.x, y: center.y, r: r0 };
+  let pts = [];
+  for (let it = 0; it < 6; it++) {
+    const tol = it < 2 ? 4 : 2;
+    pts = edges.filter(e => {
+      const dx = e.x - c.x, dy = e.y - c.y, d = Math.hypot(dx, dy);
+      return d > 0 && Math.abs(d - c.r) < tol && Math.abs((dx * e.ux + dy * e.uy) / d) > 0.85;
+    });
+    if (pts.length < 12) return null;
+    let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0, sxz = 0, syz = 0, sz = 0;
+    for (const p of pts) {
+      const z = p.x * p.x + p.y * p.y;
+      sx += p.x; sy += p.y; sxx += p.x * p.x; syy += p.y * p.y; sxy += p.x * p.y;
+      sxz += p.x * z; syz += p.y * z; sz += z;
+    }
+    const sol = solve3([[sxx, sxy, sx], [sxy, syy, sy], [sx, sy, pts.length]], [sxz, syz, sz]);
+    if (!sol) return null;
+    const x = sol[0] / 2, y = sol[1] / 2;
+    c = { x: x, y: y, r: Math.sqrt(sol[2] + x * x + y * y) };
+  }
+  const rms = Math.sqrt(pts.reduce((a, p) => a + (Math.hypot(p.x - c.x, p.y - c.y) - c.r) ** 2, 0) / pts.length);
+  const sectors = new Set(pts.map(p => Math.floor((Math.atan2(p.y - c.y, p.x - c.x) + Math.PI) / (2 * Math.PI) * 36)));
+  const contrast = pts.reduce((a, p) => a + p.m, 0) / pts.length;
+  return { x: c.x, y: c.y, r: c.r, rms: rms, coverage: sectors.size / 36, contrast: contrast };
+}
+
+// Returns {x, y, r, coverage, face} in frame pixels, or null. The hole
+// is the round outline inside the nozzle face, concentric with it and 0.15 to
+// 0.65 of its radius. Its color does not matter, so empty, dark and white
+// filled holes all work. At least 72% of its outline must be visible: with
+// less, the fit can drift (e.g. overexposed white filament merging with a
+// smear), so no hole is better than a wrong one. Circle edges must also be
+// 3.5x stronger than the typical gradient, so noise and lens vignetting do
+// not count as circles.
+function detectHole(imageData, target) {
+  const roi = grayRoi(imageData, target);
+  const size = roi.size;
+  const img = blur3(blur3(roi.gray, size), size);
+  const edges = edgePoints(img, size);
+  if (edges.length < 50) return null;
+
+  const rMin = 4, rMax = Math.round(size / 3);
+  const center = voteCenter(edges, size, rMin, rMax);
+  if (!center) return null;
+  const circles = radiusPeaks(edges, center, rMin, rMax)
+    .map(r => fitCircle(edges, center, r))
+    .filter(c => c && c.rms < 1.5 && c.contrast > edges.median * 3.5);
+
+  const faces = circles.filter(c => c.coverage >= 0.85).sort((a, b) => b.r - a.r);
+  for (const face of faces) {
+    const holes = circles.filter(c =>
+      c.r > face.r * 0.15 && c.r < face.r * 0.65 && c.coverage >= 0.72 &&
+      Math.hypot(c.x - face.x, c.y - face.y) < face.r * 0.25);
+    if (!holes.length) continue;
+    holes.sort((a, b) => b.coverage - a.coverage || a.rms - b.rms);
+    const hole = holes[0];
+    return {
+      x: hole.x + roi.x0, y: hole.y + roi.y0, r: hole.r,
+      coverage: hole.coverage,
+      face: { x: face.x + roi.x0, y: face.y + roi.y0, r: face.r }
+    };
+  }
+  return null;
 }
 
 function drawOverlay(det, target, w, h) {
@@ -223,6 +282,10 @@ function drawOverlay(det, target, w, h) {
 
   const lw = Math.max(1, w / 400);
   ctx.lineWidth = lw;
+  ctx.strokeStyle = 'rgba(250, 204, 21, 0.6)';
+  ctx.beginPath();
+  ctx.arc(det.face.x, det.face.y, det.face.r, 0, 2 * Math.PI);
+  ctx.stroke();
   ctx.strokeStyle = '#22c55e';
   ctx.beginPath();
   ctx.arc(det.x, det.y, det.r, 0, 2 * Math.PI);
@@ -252,7 +315,7 @@ function detectLive() {
     const det = detectHole(frame, target);
     drawOverlay(det, target, frame.width, frame.height);
     $('#ac-live').text(det
-      ? `Hole Δ ${(det.x - target.x).toFixed(1)} / ${(det.y - target.y).toFixed(1)} px`
+      ? `Hole Δ ${(det.x - target.x).toFixed(1)} / ${(det.y - target.y).toFixed(1)} px · outline ${Math.round(det.coverage * 100)}%`
       : 'No hole found');
   } catch (error) {
     $('#ac-live').text(error.message);
