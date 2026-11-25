@@ -3,8 +3,18 @@
 
 const AC_ROI = 0.6;            // ROI side, as part of the shorter frame side
 const AC_LIVE_MS = 200;
+const AC_SETTLE_MS = 300;      // camera latency after a move
+const AC_APPROACH = 0.3;       // mm, every move ends from the -X/-Y side
+const AC_CAL_STEP = 0.5;       // mm
+const AC_DONE_MM = 0.005;
+const AC_MAX_STEP = 1;         // mm per move
+const AC_MAX_TRAVEL = 3;       // mm per auto center run
+const AC_MAX_ITER = 8;
+const AC_STORAGE_KEY = 'axiscope_cam_calib';
 
 let acShowDetection = true;
+let acRunning = false;
+let acStop = false;
 
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));
@@ -249,8 +259,153 @@ function detectLive() {
   }
 }
 
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function detectStable() {
+  const found = [];
+  for (let i = 0; i < 3; i++) {
+    if (i) await sleep(100);
+    const frame = grabFrame();
+    const target = crosshairTarget(frame.width, frame.height);
+    const det = detectHole(frame, target);
+    if (!det) throw new Error('No nozzle hole found');
+    found.push(det);
+  }
+  const x = found.reduce((a, d) => a + d.x, 0) / found.length;
+  const y = found.reduce((a, d) => a + d.y, 0) / found.length;
+  if (found.some(d => Math.hypot(d.x - x, d.y - y) > 1.5)) {
+    throw new Error('Detection is not stable, check light and focus');
+  }
+  return { x: x, y: y };
+}
+
+async function moveXY(dx, dy) {
+  await $.get(gcodeUrl([
+    'SAVE_GCODE_STATE NAME=autocenter',
+    'G91',
+    `G0 X${(dx - AC_APPROACH).toFixed(4)} Y${(dy - AC_APPROACH).toFixed(4)} F1200`,
+    `G0 X${AC_APPROACH} Y${AC_APPROACH} F600`,
+    'RESTORE_GCODE_STATE NAME=autocenter',
+    'M400'
+  ].join('\n')));
+  await sleep(AC_SETTLE_MS);
+}
+
+function cameraKey() {
+  return selectedCamera ? (selectedCamera.deviceId || selectedCamera.url) : '';
+}
+
+function loadCalibration() {
+  try {
+    const cal = JSON.parse(localStorage.getItem(AC_STORAGE_KEY));
+    return cal && cal.camera === cameraKey() ? cal.J : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveCalibration(J) {
+  try {
+    localStorage.setItem(AC_STORAGE_KEY, JSON.stringify({ camera: cameraKey(), J: J }));
+  } catch (e) {
+    console.error('Could not store camera calibration:', e);
+  }
+}
+
+function requireReady() {
+  if (!lastStatus || lastStatus.toolhead.homed_axes !== 'xyz') {
+    throw new Error('Home the printer first');
+  }
+}
+
+// J maps a toolhead move in mm to a hole move in frame pixels. It covers
+// scale, rotation and mirroring of the camera.
+async function calibrateCamera() {
+  requireReady();
+  await moveXY(0, 0);
+  const p0 = await detectStable();
+  await moveXY(AC_CAL_STEP, 0);
+  const px = await detectStable();
+  await moveXY(-AC_CAL_STEP, AC_CAL_STEP);
+  const py = await detectStable();
+  await moveXY(0, -AC_CAL_STEP);
+
+  const J = [
+    [(px.x - p0.x) / AC_CAL_STEP, (py.x - p0.x) / AC_CAL_STEP],
+    [(px.y - p0.y) / AC_CAL_STEP, (py.y - p0.y) / AC_CAL_STEP]
+  ];
+  const lenX = Math.hypot(J[0][0], J[1][0]);
+  const lenY = Math.hypot(J[0][1], J[1][1]);
+  if (Math.min(lenX, lenY) < 2) throw new Error('The hole did not move in the image');
+  if (Math.max(lenX, lenY) / Math.min(lenX, lenY) > 1.2) throw new Error('X and Y scale differ too much');
+  const cos = (J[0][0] * J[0][1] + J[1][0] * J[1][1]) / (lenX * lenY);
+  if (Math.abs(cos) > Math.sin(15 * Math.PI / 180)) throw new Error('X and Y are not at a right angle in the image');
+
+  saveCalibration(J);
+  return `Calibrated · ${((lenX + lenY) / 2).toFixed(1)} px/mm`;
+}
+
+async function autoCenter() {
+  requireReady();
+  const J = loadCalibration();
+  if (!J) throw new Error('Calibrate the camera first');
+  const det = J[0][0] * J[1][1] - J[0][1] * J[1][0];
+  const inv = [[J[1][1] / det, -J[0][1] / det], [-J[1][0] / det, J[0][0] / det]];
+
+  let travel = 0;
+  for (let i = 1; i <= AC_MAX_ITER; i++) {
+    if (acStop) throw new Error('Stopped');
+    const p = await detectStable();
+    const frame = activeFeed();
+    const target = crosshairTarget(frame.w, frame.h);
+    const ex = target.x - p.x, ey = target.y - p.y;
+    let dx = inv[0][0] * ex + inv[0][1] * ey;
+    let dy = inv[1][0] * ex + inv[1][1] * ey;
+    const dist = Math.hypot(dx, dy);
+    if (dist < AC_DONE_MM) return `Centered · ${dist.toFixed(4)} mm off`;
+    setAcStatus(`Move ${i} · ${dist.toFixed(3)} mm off`);
+    if (dist > AC_MAX_STEP) {
+      dx *= AC_MAX_STEP / dist;
+      dy *= AC_MAX_STEP / dist;
+    }
+    travel += Math.hypot(dx, dy);
+    if (travel > AC_MAX_TRAVEL) throw new Error('Moved too far, stopped');
+    if (acStop) throw new Error('Stopped');
+    await moveXY(dx, dy);
+  }
+  throw new Error(`Not centered after ${AC_MAX_ITER} moves`);
+}
+
+function setAcStatus(text, cls) {
+  $('#ac-status').text(text).attr('class', cls || 'text-secondary');
+}
+
+async function runAc(action) {
+  if (acRunning) return;
+  acRunning = true;
+  acStop = false;
+  $('#ac-calibrate, #ac-center').prop('disabled', true);
+  $('#ac-stop').prop('disabled', false);
+  setAcStatus('Working...');
+  try {
+    setAcStatus(await action(), 'text-success');
+  } catch (error) {
+    const msg = (error.responseJSON && error.responseJSON.error && error.responseJSON.error.message) || error.message;
+    setAcStatus(msg, 'text-danger');
+  }
+  acRunning = false;
+  $('#ac-calibrate, #ac-center').prop('disabled', false);
+  $('#ac-stop').prop('disabled', true);
+}
+
 $(document).ready(function() {
   setInterval(detectLive, AC_LIVE_MS);
+
+  $('#ac-calibrate').on('click', () => runAc(calibrateCamera));
+  $('#ac-center').on('click', () => runAc(autoCenter));
+  $('#ac-stop').on('click', () => { acStop = true; });
 
   $('#ac-show').on('change', function() {
     acShowDetection = this.checked;

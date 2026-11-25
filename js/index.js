@@ -1,6 +1,7 @@
 let printerIp = '';
 let updateInterval = null;
 let selectedCamera = null;
+let lastStatus = null;
 
 function printerUrl(ip, endpoint) {
     ip = ip.replace(/^https?:\/\//, '');
@@ -23,6 +24,7 @@ function showModalMessage(text, ok) {
 function updatePage() {
     $.get(printerUrl(printerIp, '/printer/objects/query?gcode_move&toolhead&quad_gantry_level&stepper_enable&' + INDX_QUERY), function(data) {
         const status = data.result.status;
+        lastStatus = status;
         const pos = status.gcode_move.gcode_position;
         const homed = status.toolhead.homed_axes === 'xyz';
 
@@ -225,6 +227,7 @@ function disconnect() {
     stopLocalCamera();
     printerIp = '';
     selectedCamera = null;
+    lastStatus = null;
 
     $('#printerIp').prop('disabled', false);
     $('#disconnectBtn').hide();
