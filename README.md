@@ -10,6 +10,7 @@ Camera-assisted XY tool alignment for [Bondtech INDX](https://github.com/Bondtec
   - [On the printer](#on-the-printer)
 - [Moonraker CORS](#moonraker-cors)
 - [Usage Guide](#usage-guide)
+  - [Auto center](#auto-center)
 - [Troubleshooting & FAQ](#troubleshooting--faq)
 - [Credits](#credits)
 - [License](#license)
@@ -95,6 +96,22 @@ The right panel guides you through every tool. It uses the INDX macros, so the o
 4. **Done:** check all offsets, then run `CAL_Z` for the Z offsets.
 
 The tool count comes from `tool_count` in `[gcode_macro TOOL_POSITIONS]`. You can click any step to redo it. If you change the T0 reference, redo every tool.
+
+### Auto center
+
+Axiscope finds the nozzle hole in the camera image and can move the head until the hole sits in the crosshair. The detected hole is drawn green, the nozzle face yellow.
+
+1. With a tool over the camera and the hole detected, press **Calibrate camera** once. It moves 0.5 mm in X and Y to learn the scale and rotation of the camera. Redo it when the camera, its position or its resolution changes.
+2. Press **Auto center**. It moves in small steps until the hole is less than 0.005 mm off. Each move ends from the same side, so backlash is the same every time. **Stop** ends it before the next move.
+3. Save the position in the guide as usual.
+
+The hole is found by its round outline, not its color, so empty, dark and white filled holes all work. It must sit inside the nozzle face and most of its outline must be visible. If not, Axiscope reports no hole and does not move. Tips:
+
+- An empty, clean hole gives the best result. Unload the filament first (`CAL_Z` needs that anyway).
+- Avoid overexposure: white filament that turns pure white can merge with ooze on the nozzle face.
+- The readout below the switch shows the offset in pixels and how much of the hole outline was found.
+
+Auto center needs to read the camera pixels. This works for local cameras and for printer cameras when the page is served by the printer. A printer stream opened from another origin cannot be read by the browser.
 
 ## Troubleshooting & FAQ
 
