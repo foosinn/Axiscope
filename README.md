@@ -2,6 +2,8 @@
 
 Camera-assisted XY tool alignment for [Bondtech INDX](https://github.com/BondtechAB/INDX) printers. Center each nozzle in the crosshair and INDX saves the offset. This is the [nozzle camera method](https://github.com/BondtechAB/INDX#method-3-nozzle-camera-most-precise-xy-higher-cost) from the INDX docs, as a guided web page.
 
+This is a fork of [Axiscope by Nic335](https://github.com/nic335/Axiscope), made for [Klipper Tool Changer](https://github.com/viesturz/klipper-toolchanger) printers. The camera view, crosshair, zoom and jog controls all come from there. Many thanks to [Nic335](https://github.com/nic335) and [N3MI-DG](https://github.com/N3MI-DG) for the original tool. If you use Klipper Tool Changer instead of INDX, use the original.
+
 <img src="media/axiscope.png" alt="Axiscope centering T2 on the nozzle hole during the INDX guide" width="700"/>
 
 ## Table of Contents
@@ -140,7 +142,7 @@ Some cameras aren't auto-detected by Crowsnest if plugged in after boot. Restart
 
 ## Credits
 
-[Nic335](https://github.com/nic335) and [N3MI-DG](https://github.com/N3MI-DG)
+Original Axiscope by [Nic335](https://github.com/nic335) and [N3MI-DG](https://github.com/N3MI-DG). INDX guide, local camera support and auto center added in this fork.
 
 ## License
 
