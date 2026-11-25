@@ -87,7 +87,7 @@ function indxPrepareBody(st) {
     </ul>
     <ol class="small mb-2">
       <li>Put the camera on the bed, lens facing up.</li>
-      <li>Clean all nozzle tips.</li>
+      <li>Clean all nozzle tips. Auto center works best with an empty, clean hole.</li>
       <li>All offsets are measured against T0. If you change the T0 reference, redo every tool.</li>
     </ol>
     ${st.homed ? '' : indxButton('Home all', 'G28', { cls: 'btn-warning' })}
@@ -100,7 +100,8 @@ function indxT0Body(st) {
     <ol class="small mb-2">
       <li>Pick up T0.</li>
       <li>Move the nozzle over the camera. Use the big jog buttons first${st.hasRef ? ', or move to the saved reference' : ''}.</li>
-      <li>Center the nozzle tip in the crosshair with the fine jog buttons. Zoom in for the last steps.</li>
+      <li>Once per camera setup, press <b>Calibrate camera</b> while the hole is detected.</li>
+      <li>Center the nozzle hole in the crosshair with <b>Auto center</b>, or with the fine jog buttons. Zoom in for the last steps.</li>
       <li>Save the position as camera reference.</li>
     </ol>
     ${indxButton('Pick up T0', 'T0', { disabled: holding, cls: holding ? 'btn-outline-secondary' : 'btn-primary' })}
@@ -118,7 +119,7 @@ function indxToolBody(st, tool) {
   return `
     <ol class="small mb-2">
       <li>Pick up T${tool}. It moves to the camera reference with its offset cleared.</li>
-      <li>Center the nozzle tip in the crosshair with the fine jog buttons.</li>
+      <li>Center the nozzle hole in the crosshair with <b>Auto center</b>, or with the fine jog buttons.</li>
       <li>Save the offset.</li>
     </ol>
     ${indxButton(`Pick up T${tool} and move to camera`, `CAL_TWO_PREP_TOOL_CAL TOOL=${tool}`,
