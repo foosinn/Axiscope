@@ -2,6 +2,7 @@
 let printerIp = '';
 let path = '/webcam?action=stream';
 let updateInterval = null;
+let isIndx = false;
 
 function printerUrl(ip, endpoint) {
     ip = ip.replace(/^https?:\/\//, '');
@@ -19,15 +20,26 @@ function isValidIP(input) {
 }
 
 function updatePage() {
-  $.get(printerUrl(printerIp,"/printer/objects/query?gcode_move&toolhead&toolchanger&quad_gantry_level&stepper_enable&axiscope"), function(data){
-    // console.log(printerUrl)
+  const objects = isIndx ? INDX_QUERY : "toolchanger&axiscope";
+  $.get(printerUrl(printerIp,"/printer/objects/query?gcode_move&toolhead&quad_gantry_level&stepper_enable&" + objects), function(data){
     if (data['result']) {
 
       var positions   = data['result']['status']['gcode_move']['position'];
       var gcode_pos   = data['result']['status']['gcode_move']['gcode_position'];
       var homed       = data['result']['status']['toolhead']['homed_axes'] == "xyz";
-      var qgl_done    = data['result']['status']['quad_gantry_level']['applied'];
+      var qgl_done    = data['result']['status']['quad_gantry_level']?.['applied'];
       var steppers    = data['result']['status']['stepper_enable']['steppers'];
+
+      updatePositions(positions, gcode_pos);
+      updateHoming(homed);
+      updateQGL(qgl_done);
+      updateMotor(checkActiveStepper(steppers));
+
+      if (isIndx) {
+        updateIndxGuide(data['result']['status']);
+        return;
+      }
+
       // var initialized = data['result']['status']['toolchanger']['status'] == "ready";
       var tool_number = data['result']['status']['toolchanger']['tool_number'];
       var tools       = data['result']['status']['toolchanger']['tool_numbers'];
@@ -36,10 +48,6 @@ function updatePage() {
       var axis_max    = data['result']['status']['toolhead']['axis_maximum'];
       var axiscope    = data['result']['status']['axiscope'];
 
-      updatePositions(positions, gcode_pos);
-      updateHoming(homed);
-      updateQGL(qgl_done);
-      updateMotor(checkActiveStepper(steppers));
       updateTools(tools, tool_number);
       updateBedMap(axiscope, axis_min, axis_max, gcode_pos);
       updateLedControl(axiscope);
@@ -545,9 +553,21 @@ $(document).ready(function() {
         // Initialize position bars and other UI
         initializePositionBars();
         
+        try {
+            isIndx = await isIndxPrinter(printerIp);
+        } catch (error) {
+            console.error('Failed to read printer objects:', error);
+            isIndx = false;
+        }
+
         // Start the update cycle
+        if (isIndx) {
+            startIndxGuide();
+        } else {
+            stopIndxGuide();
+            getTools();
+        }
         updatePage();
-        getTools();
         updateInterval = setInterval(updatePage, 1000);
     }
 
