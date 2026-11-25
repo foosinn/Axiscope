@@ -23,7 +23,6 @@ function calculateZoomOrigin() {
 
 // Function to update transform with all transformations
 function updateTransform() {
-    const zoomImage = document.getElementById('zoom-image');
     const zoomSlider = document.getElementById('zoom-range');
     const scale = 1 + (parseInt(zoomSlider.value) / 100);
     const scaleX = isFlippedHorizontal ? -scale : scale;
@@ -32,16 +31,45 @@ function updateTransform() {
     // Get zoom origin based on crosshair position
     const origin = calculateZoomOrigin();
     
-    // Set transform origin to crosshair position
-    zoomImage.style.transformOrigin = `${origin.x}% ${origin.y}%`;
-    
-    // Apply scale transform without translate
-    zoomImage.style.transform = `scale(${scaleX}, ${scaleY})`;
+    document.querySelectorAll('.cam-feed').forEach(feed => {
+        feed.style.transformOrigin = `${origin.x}% ${origin.y}%`;
+        feed.style.transform = `scale(${scaleX}, ${scaleY})`;
+    });
+}
+
+let localStream = null;
+
+function localCamerasSupported() {
+    return !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+}
+
+// Device labels are only visible after the user granted camera access once.
+async function listLocalCameras() {
+    if (!localCamerasSupported()) return [];
+    const probe = await navigator.mediaDevices.getUserMedia({ video: true });
+    probe.getTracks().forEach(track => track.stop());
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.filter(d => d.kind === 'videoinput');
+}
+
+async function startLocalCamera(deviceId) {
+    stopLocalCamera();
+    localStream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: deviceId } }
+    });
+    document.getElementById('zoom-video').srcObject = localStream;
+}
+
+function stopLocalCamera() {
+    if (localStream) {
+        localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+    }
+    document.getElementById('zoom-video').srcObject = null;
 }
 
 $(document).ready(function() {
     //Zoom
-    const zoomImage = document.getElementById('zoom-image');
     const zoomSlider = document.getElementById('zoom-range');
 
     // Zoom event listener
@@ -69,12 +97,13 @@ $(document).ready(function() {
     // Set initial transform
     updateTransform();
     //Contrast
-    const img = document.getElementById('zoom-image');
     const slider = document.getElementById('contrast-range');
 
     function updateContrast() {
       const value = slider.value;
-      img.style.filter = `contrast(${value}%)`;
+      document.querySelectorAll('.cam-feed').forEach(feed => {
+        feed.style.filter = `contrast(${value}%)`;
+      });
     }
     slider.addEventListener('input', updateContrast);
     updateContrast();
